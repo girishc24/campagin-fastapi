@@ -1,32 +1,15 @@
-from contextlib import asynccontextmanager
 from datetime import datetime
 from random import randint
-from typing import Annotated, Any
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from sqlmodel import SQLModel, Session, create_engine
+from typing import  Any
+from fastapi import FastAPI, HTTPException, Response, Depends
+from models import Product
+from database import session, engine
+import database_models 
+from sqlalchemy.orm import Session
 
-sqlite_file_name = "database.db"
-sqlite_url = f"sqlite:///{sqlite_file_name}"
+app = FastAPI(root_path="/api/v1")
 
-connect_args = {"check_same_thread": False}
-engine = create_engine(sqlite_url, connect_args=connect_args)
-
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
-
-def get_session():
-    with Session(engine) as session:
-        yield session
-        
-SessionDep = Annotated[Session, Depends(get_session)]
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    create_db_and_tables()
-    yield
-    # Any cleanup code can go here
-
-app = FastAPI(root_path="/api/v1", lifespan=lifespan)
+database_models.Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 async def root():
@@ -53,6 +36,31 @@ data = [
     }
 ]
 
+products = [
+    Product(id=1, name="phone", description="Hello", price=10, quantity=1),
+    Product(id=2, name="phone", description="Hello", price=10, quantity=1),
+    Product(id=3, name="phone", description="Hello", price=10, quantity=1),
+    Product(id=4, name="phone", description="Hello", price=10, quantity=1),
+    Product(id=5, name="phone", description="Hello", price=10, quantity=1),
+    Product(id=6, name="phone", description="Hello", price=10, quantity=1)
+]
+
+def get_db():
+    db = session()
+    try:
+        yield db
+    finally:
+        db.close()
+ 
+def init_db():
+    db = session()
+    count = db.query(database_models.Product).count
+    if count == 0:
+        for product in products:
+            db.add(database_models.Product(**product.model_dump()))
+
+        db.commit()
+init_db()
 
 @app.get("/campaigns")
 async def get_campaigns():
@@ -102,3 +110,37 @@ async def update_campaign(campaign_id: int):
 @app.get("/items")
 async def read_items(skip: int = 0, limit: int = 10):
     return {"skip": skip, "limit": limit}
+
+@app.get("/produts")
+async def get_products(db: Session = Depends(get_db)): # Dependency Injection of database
+    #db = session()
+    db_products = db.query(database_models.Product).all()
+    return db_products
+
+@app.get("/products/{product_id}")
+async def get_products_id(product_id : int):
+    for product in products:
+        if product.id == product_id:
+            return product
+    raise HTTPException(status_code=404, detail="No Products Found")
+
+@app.post("/produts")
+async def add_product(product: Product):
+    products.append(product)
+    return product
+
+@app.put("/products")
+async def update_product(product_id : int, product : Product):
+    for i in range(len(products)):
+        if products[i].id == product_id:
+            products[i] = product
+        return product
+    raise HTTPException(status_code=404, detail="No Product ID")
+
+@app.delete("/products/{product_id}")
+async def delete_product(product_id: int):
+    for index, product in enumerate(products):
+        if product.get("id") == product_id:
+            products.pop(index)
+            return Response(status_code=204)
+    raise HTTPException(status_code=404, detail="Product not found")
