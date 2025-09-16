@@ -54,7 +54,7 @@ def get_db():
  
 def init_db():
     db = session()
-    count = db.query(database_models.Product).count
+    count = db.query(database_models.Product).count 
     if count == 0:
         for product in products:
             db.add(database_models.Product(**product.model_dump()))
@@ -111,36 +111,56 @@ async def update_campaign(campaign_id: int):
 async def read_items(skip: int = 0, limit: int = 10):
     return {"skip": skip, "limit": limit}
 
-@app.get("/produts")
+@app.get("/products")
 async def get_products(db: Session = Depends(get_db)): # Dependency Injection of database
     #db = session()
     db_products = db.query(database_models.Product).all()
     return db_products
 
 @app.get("/products/{product_id}")
-async def get_products_id(product_id : int):
-    for product in products:
-        if product.id == product_id:
-            return product
+async def get_products_id(product_id : int, db: Session = Depends(get_db)):
+    db_product = db.query(database_models.Product).filter(database_models.Product.id == product_id).first()
+    # for product in products:
+    #     if product.id == product_id:
+    #         return product
+    if db_product:
+        return db_product
     raise HTTPException(status_code=404, detail="No Products Found")
 
 @app.post("/produts")
-async def add_product(product: Product):
-    products.append(product)
+async def add_product(product: Product, db: Session = Depends(get_db)):
+    #products.append(product)
+    db.add(database_models.Product(**product.model_dump()))
+    db.commit()
     return product
 
 @app.put("/products")
-async def update_product(product_id : int, product : Product):
-    for i in range(len(products)):
-        if products[i].id == product_id:
-            products[i] = product
-        return product
-    raise HTTPException(status_code=404, detail="No Product ID")
+async def update_product(product_id : int, product : Product, db: Session = Depends(get_db)):
+    db_product = db.query(database_models.Product).filter(database_models.Product.id == product_id).first()
+    if db_product:
+        db_product.name = product.name
+        db_product.description = product.description
+        db_product.price = product.price
+        db_product.quantity = product.quantity
+        db.commit()
+        return {"message": "Product Updated"}
+    # for i in range(len(products)):
+    #     if products[i].id == product_id:
+    #         products[i] = product
+    #     return product
+    else:
+        raise HTTPException(status_code=404, detail="No Product ID")
 
 @app.delete("/products/{product_id}")
-async def delete_product(product_id: int):
-    for index, product in enumerate(products):
-        if product.get("id") == product_id:
-            products.pop(index)
-            return Response(status_code=204)
-    raise HTTPException(status_code=404, detail="Product not found")
+async def delete_product(product_id: int, db: Session = Depends(get_db)):
+    db_product = db.query(database_models.Product).filter(database_models.Product.id == product_id).first()
+    if db_product:
+        db.delete(db_product)
+        db.commit()
+        return {"message": "Product Deleted Successfully"}
+    # for index, product in enumerate(products):
+    #     if product.get("id") == product_id:
+    #         products.pop(index)
+    #         return Response(status_code=204)
+    else:
+        raise HTTPException(status_code=404, detail="Product not found")
